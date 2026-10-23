@@ -139,8 +139,10 @@
       <input type="hidden" name="agency" id="p_agency">
       <input type="hidden" name="product" id="p_product">
       <input type="hidden" name="category" id="p_category">
+      <input type="hidden" name="combination" id="p_combination">
       <input type="hidden" name="mrp" id="p_mrp">
       <input type="hidden" name="scheme" id="p_scheme">
+      <input type="hidden" name="samples" id="p_samples">
       <input type="hidden" name="reviewDone" id="p_reviewDone">
       <input class="hp" type="text" name="website" id="p_website" tabindex="-1" autocomplete="off">
 
@@ -154,6 +156,7 @@
 
         <label class="f" for="f_phone">Contact Number <span class="req">*</span></label>
         <input id="f_phone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number">
+        <p class="lede" id="lookupNote" style="display:none;margin-top:7px;color:var(--ok);font-weight:600"></p>
 
         <label class="f" for="f_company">Company Name</label>
         <select id="f_company">
@@ -166,6 +169,13 @@
         <label class="f" for="f_agency">Agency</label>
         <input id="f_agency" type="text" placeholder="Agency / distributor name">
 
+        <div id="prevWrap" style="display:none">
+          <label class="f" for="f_prev">Your Previous Products (tap to refill)</label>
+          <select id="f_prev">
+            <option value="">— Select a previous product —</option>
+          </select>
+        </div>
+
         <label class="f" for="f_product">Product Name <span class="req">*</span></label>
         <input id="f_product" type="text" placeholder="e.g. Product name &amp; size">
 
@@ -177,11 +187,17 @@
           <input id="f_categoryOther" type="text" placeholder="Type the category">
         </div>
 
+        <label class="f" for="f_combination">Drug Combination (for medicines)</label>
+        <input id="f_combination" type="text" placeholder="e.g. Amoxicillin 500mg + Clavulanic Acid 125mg">
+
         <label class="f" for="f_mrp">Product Price (MRP ₹)</label>
         <input id="f_mrp" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 1250">
 
         <label class="f" for="f_scheme">Scheme / Offer Price</label>
         <input id="f_scheme" type="text" placeholder="e.g. 10+2 scheme, or offer price ₹999">
+
+        <label class="f" for="f_samples">Samples Left</label>
+        <input id="f_samples" type="text" placeholder="e.g. 10 strips, 2 bottles — blank if none">
 
         <div class="error" id="err1"></div>
         <button type="button" class="btn" id="toStep2">Continue →</button>
@@ -296,8 +312,10 @@
       agency: val('f_agency'),
       product: val('f_product'),
       category: resolved('f_category','f_categoryOther'),
+      combination: val('f_combination'),
       mrp: val('f_mrp'),
       scheme: val('f_scheme'),
+      samples: val('f_samples'),
       reviewDone: $('f_reviewDone').checked
     };
   }
@@ -355,7 +373,9 @@
       ['Your Name', d.name], ['Contact Number', d.phone],
       ['Company', d.company || '—'], ['Agency', d.agency || '—'],
       ['Product', d.product], ['Category', d.category || '—'],
+      ['Drug Combination', d.combination || '—'],
       ['MRP', d.mrp ? '₹ ' + d.mrp : '—'], ['Scheme / Offer', d.scheme || '—'],
+      ['Samples Left', d.samples || '—'],
       ['Google Review', '<span class="yes">✓ Done</span>']
     ];
     $('summaryBox').innerHTML = rows.map(function(r){
@@ -363,6 +383,67 @@
     }).join('');
     hideError('err3');
   }
+
+  /* ---------- returning-rep lookup by mobile number ----------
+     Entering a number that is already in the sheet refills the rep's saved
+     name/company/agency (all editable) and lists their previous products. */
+  function setSelect(selId, otherId, wrapId, value){
+    var sel = $(selId);
+    if (!value){ sel.value = ''; $(wrapId).style.display = 'none'; return; }
+    var found = false;
+    for (var i = 0; i < sel.options.length; i++){
+      if (sel.options[i].value === value){ found = true; break; }
+    }
+    if (found){ sel.value = value; $(wrapId).style.display = 'none'; }
+    else { sel.value = OTHER; $(wrapId).style.display = 'block'; $(otherId).value = value; }
+  }
+  var lastLookupPhone = '';
+  var prevProducts = [];
+  window.repLookupCb = function(resp){
+    if (!resp || !resp.found) return;
+    if (resp.name) $('f_name').value = resp.name;
+    if (resp.agency) $('f_agency').value = resp.agency;
+    if (resp.company) setSelect('f_company','f_companyOther','companyOtherWrap', resp.company);
+    prevProducts = resp.products || [];
+    var sel = $('f_prev');
+    sel.innerHTML = '<option value="">— Select a previous product —</option>';
+    prevProducts.forEach(function(p, idx){
+      var o = document.createElement('option');
+      o.value = String(idx);
+      o.textContent = p.product + (p.mrp ? ' · ₹' + p.mrp : '');
+      sel.appendChild(o);
+    });
+    $('prevWrap').style.display = prevProducts.length ? 'block' : 'none';
+    var note = $('lookupNote');
+    note.textContent = '✓ Welcome back — details filled from your last visit. Edit anything that has changed.';
+    note.style.display = 'block';
+  };
+  function doLookup(phone){
+    var s = document.createElement('script');
+    s.src = ENDPOINT + '?action=lookup&phone=' + encodeURIComponent(phone) + '&callback=repLookupCb';
+    s.onload = function(){ s.remove(); };
+    s.onerror = function(){ s.remove(); };
+    document.body.appendChild(s);
+  }
+  $('f_phone').addEventListener('input', function(){
+    var p = $('f_phone').value.replace(/\D/g,'');
+    if (p.length === 10 && p !== lastLookupPhone){
+      lastLookupPhone = p;
+      doLookup(p);
+    }
+  });
+  $('f_prev').addEventListener('change', function(){
+    var idx = $('f_prev').value;
+    if (idx === '') return;
+    var p = prevProducts[parseInt(idx, 10)];
+    if (!p) return;
+    $('f_product').value = p.product || '';
+    setSelect('f_category','f_categoryOther','categoryOtherWrap', p.category || '');
+    $('f_combination').value = p.combination || '';
+    $('f_mrp').value = p.mrp || '';
+    $('f_scheme').value = p.scheme || '';
+    $('f_samples').value = p.samples || '';
+  });
 
   /* ---------- submit (posts to Apps Script via hidden iframe) ---------- */
   var submitted = false;
@@ -378,8 +459,10 @@
     $('p_agency').value = d.agency;
     $('p_product').value = d.product;
     $('p_category').value = d.category;
+    $('p_combination').value = d.combination;
     $('p_mrp').value = d.mrp;
     $('p_scheme').value = d.scheme;
+    $('p_samples').value = d.samples;
     $('p_reviewDone').value = 'Yes';
     var btn = $('submitBtn');
     btn.disabled = true; btn.textContent = 'Saving…';
@@ -404,6 +487,8 @@
   $('anotherBtn').addEventListener('click', function(){
     // Keep rep identity + company + review confirmation; clear only product fields.
     $('f_product').value = ''; $('f_mrp').value = ''; $('f_scheme').value = '';
+    $('f_combination').value = ''; $('f_samples').value = '';
+    $('f_prev').value = '';
     categorySel.value = ''; $('f_categoryOther').value = '';
     $('categoryOtherWrap').style.display = 'none';
     var btn = $('submitBtn'); btn.disabled = false; btn.textContent = '✓ Submit Entry';
@@ -415,6 +500,10 @@
     $('companyOtherWrap').style.display = 'none';
     $('categoryOtherWrap').style.display = 'none';
     reviewOpened = false;
+    lastLookupPhone = '';
+    prevProducts = [];
+    $('prevWrap').style.display = 'none';
+    $('lookupNote').style.display = 'none';
     $('f_reviewDone').disabled = true;
     $('reviewConfirm').style.opacity = '.45';
     $('reviewHint').textContent = 'First, tap the button above to open the review page — the tick box unlocks only after that.';
