@@ -193,15 +193,16 @@
           <div class="stars">⭐⭐⭐⭐⭐</div>
           <h2>Review Us on Google</h2>
           <p>One quick step before you submit.<br>Tap below to write your Google review for <b>AR Plastic Surgery</b> — then tick the box and continue.</p>
-          <a class="review-btn" href="https://g.page/r/CSpszohzLdmSEBM/review" target="_blank" rel="noopener">Write a Google Review</a>
+          <a class="review-btn" id="reviewLink" href="https://g.page/r/CSpszohzLdmSEBM/review" target="_blank" rel="noopener">Write a Google Review</a>
+          <p class="lede" id="reviewHint" style="margin-top:12px;text-align:center">First, tap the button above to open the review page — the tick box unlocks only after that.</p>
         </div>
 
-        <label class="confirm" for="f_reviewDone">
-          <input type="checkbox" id="f_reviewDone">
+        <label class="confirm" id="reviewConfirm" for="f_reviewDone" style="opacity:.45">
+          <input type="checkbox" id="f_reviewDone" disabled>
           <span>I've completed my Google review <span class="req">*</span></span>
         </label>
 
-        <button type="button" class="btn" id="toStep3" disabled>Continue →</button>
+        <p class="lede" style="margin-top:14px;text-align:center">Once you tick the box, the Submit step opens automatically.</p>
         <button type="button" class="back-link" id="backTo1">← Back to details</button>
       </section>
 
@@ -332,10 +333,23 @@
   });
   $('backTo1').addEventListener('click', function(){ goStep(1); });
   $('backTo2').addEventListener('click', function(){ goStep(2); });
-  $('f_reviewDone').addEventListener('change', function(){
-    $('toStep3').disabled = !$('f_reviewDone').checked;
+
+  /* The review link cannot be skipped: the tick box stays locked until the
+     review page has been opened, and ticking it moves straight to Submit. */
+  var reviewOpened = false;
+  $('reviewLink').addEventListener('click', function(){
+    reviewOpened = true;
+    $('f_reviewDone').disabled = false;
+    $('reviewConfirm').style.opacity = '1';
+    $('reviewHint').textContent = 'Review page opened. Post your review there, then tick the box below.';
   });
-  $('toStep3').addEventListener('click', function(){
+  $('f_reviewDone').addEventListener('change', function(){
+    if ($('f_reviewDone').checked && reviewOpened){
+      buildSummary();
+      setTimeout(function(){ goStep(3); }, 350);
+    }
+  });
+  function buildSummary(){
     var d = details();
     var rows = [
       ['Your Name', d.name], ['Contact Number', d.phone],
@@ -348,8 +362,7 @@
       return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+r[1]+'</div></div>';
     }).join('');
     hideError('err3');
-    goStep(3);
-  });
+  }
 
   /* ---------- submit (posts to Apps Script via hidden iframe) ---------- */
   var submitted = false;
@@ -401,7 +414,10 @@
     $('entryForm').reset();
     $('companyOtherWrap').style.display = 'none';
     $('categoryOtherWrap').style.display = 'none';
-    $('toStep3').disabled = true;
+    reviewOpened = false;
+    $('f_reviewDone').disabled = true;
+    $('reviewConfirm').style.opacity = '.45';
+    $('reviewHint').textContent = 'First, tap the button above to open the review page — the tick box unlocks only after that.';
     var btn = $('submitBtn'); btn.disabled = false; btn.textContent = '✓ Submit Entry';
     goStep(1);
     $('f_name').focus();
